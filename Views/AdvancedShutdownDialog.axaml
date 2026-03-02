@@ -5,7 +5,7 @@
         Width="440"
         Height="290"
         CanResize="False"
-        SystemDecorations="BorderOnly"
+        SystemDecorations="Full"
         WindowStartupLocation="CenterScreen"
         Title="高级计时关机">
     <Border Margin="14" Padding="16" CornerRadius="12"

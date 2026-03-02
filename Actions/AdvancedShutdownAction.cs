@@ -21,16 +21,28 @@ public class AdvancedShutdownAction(ILogger<AdvancedShutdownAction> logger) : Ac
     private int _totalScheduledSeconds;
     private Process? _countdownProcess;
     private AdvancedShutdownDialog? _activeDialog;
+    private Window? _launcherWindow;
 
     protected override async Task OnInvoke()
     {
         _logger.LogDebug("AdvancedShutdownAction OnInvoke 开始");
 
-        var configuredMinutes = Math.Max(1, Settings?.Minutes ?? 2);
-        ScheduleShutdown(configuredMinutes);
+        if (!IsPlanActive())
+        {
+            var configuredMinutes = Math.Max(1, Settings?.Minutes ?? 2);
+            ScheduleShutdown(configuredMinutes);
+        }
 
         await ShowDialogAsync();
         await base.OnInvoke();
+    }
+
+    private bool IsPlanActive()
+    {
+        lock (_syncLock)
+        {
+            return _countdownProcess is { HasExited: false } && _shutdownAt > DateTimeOffset.Now;
+        }
     }
 
     private void ScheduleShutdown(int minutes)
@@ -68,6 +80,7 @@ public class AdvancedShutdownAction(ILogger<AdvancedShutdownAction> logger) : Ac
     private void CancelShutdownPlan()
     {
         StopCountdownProcess();
+        CloseLauncherWindow();
         lock (_syncLock)
         {
             _shutdownAt = DateTimeOffset.MinValue;
@@ -160,6 +173,7 @@ public class AdvancedShutdownAction(ILogger<AdvancedShutdownAction> logger) : Ac
     {
         await Dispatcher.UIThread.InvokeAsync(async () =>
         {
+            CloseLauncherWindow();
             try
             {
                 await ShowStyledDialogAsync();
@@ -193,6 +207,10 @@ public class AdvancedShutdownAction(ILogger<AdvancedShutdownAction> logger) : Ac
         {
             textBlock.Text = BuildCountdownText();
             progressBar.Value = BuildCountdownProgress();
+            if (!IsPlanActive())
+            {
+                dialog.Close();
+            }
         };
         countdownTimer.Start();
 
@@ -202,6 +220,15 @@ public class AdvancedShutdownAction(ILogger<AdvancedShutdownAction> logger) : Ac
             if (ReferenceEquals(_activeDialog, dialog))
             {
                 _activeDialog = null;
+            }
+
+            if (IsPlanActive())
+            {
+                ShowOrUpdateLauncherWindow();
+            }
+            else
+            {
+                CloseLauncherWindow();
             }
         };
 
@@ -223,6 +250,7 @@ public class AdvancedShutdownAction(ILogger<AdvancedShutdownAction> logger) : Ac
         };
 
         dialog.Show();
+        dialog.Activate();
         await Task.CompletedTask;
     }
 
@@ -234,7 +262,8 @@ public class AdvancedShutdownAction(ILogger<AdvancedShutdownAction> logger) : Ac
             Width = 380,
             Height = 200,
             CanResize = false,
-            WindowStartupLocation = WindowStartupLocation.CenterScreen
+            WindowStartupLocation = WindowStartupLocation.CenterScreen,
+            SystemDecorations = SystemDecorations.Full
         };
 
         var message = new TextBlock
@@ -245,9 +274,27 @@ public class AdvancedShutdownAction(ILogger<AdvancedShutdownAction> logger) : Ac
         };
 
         var countdownTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
-        countdownTimer.Tick += (_, _) => message.Text = BuildCountdownText();
+        countdownTimer.Tick += (_, _) =>
+        {
+            message.Text = BuildCountdownText();
+            if (!IsPlanActive())
+            {
+                dialog.Close();
+            }
+        };
         countdownTimer.Start();
-        dialog.Closed += (_, _) => countdownTimer.Stop();
+        dialog.Closed += (_, _) =>
+        {
+            countdownTimer.Stop();
+            if (IsPlanActive())
+            {
+                ShowOrUpdateLauncherWindow();
+            }
+            else
+            {
+                CloseLauncherWindow();
+            }
+        };
 
         var readButton = new Button { Content = "已阅", Width = 90 };
         var cancelButton = new Button { Content = "取消计划", Width = 90 };
@@ -287,7 +334,95 @@ public class AdvancedShutdownAction(ILogger<AdvancedShutdownAction> logger) : Ac
         };
 
         dialog.Show();
+        dialog.Activate();
         await Task.CompletedTask;
+    }
+
+    private void ShowOrUpdateLauncherWindow()
+    {
+        if (!IsPlanActive())
+        {
+            CloseLauncherWindow();
+            return;
+        }
+
+        if (_launcherWindow is { IsVisible: true })
+        {
+            _launcherWindow.Activate();
+            return;
+        }
+
+        var remainingText = new TextBlock
+        {
+            Text = BuildCountdownText(),
+            FontSize = 13,
+            HorizontalAlignment = HorizontalAlignment.Center
+        };
+
+        var reopenButton = new Button
+        {
+            Content = "打开关机面板",
+            HorizontalAlignment = HorizontalAlignment.Stretch
+        };
+
+        reopenButton.Click += async (_, _) =>
+        {
+            CloseLauncherWindow();
+            await ShowDialogAsync();
+        };
+
+        var timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+        timer.Tick += (_, _) =>
+        {
+            if (!IsPlanActive())
+            {
+                CloseLauncherWindow();
+                return;
+            }
+
+            remainingText.Text = BuildCountdownText();
+        };
+
+        var window = new Window
+        {
+            Title = "高级计时关机进行中",
+            Width = 240,
+            Height = 120,
+            CanResize = false,
+            Topmost = true,
+            ShowInTaskbar = false,
+            SystemDecorations = SystemDecorations.Full,
+            WindowStartupLocation = WindowStartupLocation.CenterScreen,
+            Content = new StackPanel
+            {
+                Margin = new(12),
+                Spacing = 8,
+                Children = { remainingText, reopenButton }
+            }
+        };
+
+        window.Closed += (_, _) =>
+        {
+            timer.Stop();
+            if (ReferenceEquals(_launcherWindow, window))
+            {
+                _launcherWindow = null;
+            }
+        };
+
+        _launcherWindow = window;
+        window.Show();
+        timer.Start();
+    }
+
+    private void CloseLauncherWindow()
+    {
+        if (_launcherWindow is { IsVisible: true })
+        {
+            _launcherWindow.Close();
+        }
+
+        _launcherWindow = null;
     }
 
     private static async Task<int?> ShowExtendInputDialogAsync(Window owner)
