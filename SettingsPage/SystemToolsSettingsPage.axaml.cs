@@ -3,11 +3,14 @@ using System.IO;
 using System.Threading.Tasks;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
+using ClassIsland.Core;
 using ClassIsland.Core.Abstractions.Controls;
 using ClassIsland.Core.Attributes;
 using FluentAvalonia.UI.Controls;
 using SystemTools.ConfigHandlers;
 using SystemTools.Shared;
+using SystemTools.Services;
+using ClassIsland.Core.Abstractions;
 
 namespace SystemTools;
 
@@ -24,7 +27,7 @@ public partial class SystemToolsSettingsPage : SettingsPageBase
                                                                        .LocalApplicationData), "ClassIsland", "Plugins",
                                                                    "SystemTools"));
 
-        ViewModel = new SystemToolsSettingsViewModel(GlobalConstants.MainConfig);
+        ViewModel = new SystemToolsSettingsViewModel(GlobalConstants.MainConfig, IAppHost.GetService<FloatingWindowService>());
         DataContext = this;
         InitializeComponent();
 
@@ -32,6 +35,7 @@ public partial class SystemToolsSettingsPage : SettingsPageBase
         UpdateDownloadButtonStates();
 
         ViewModel.InitializeFeatureItems();
+        ViewModel.RefreshFloatingTriggers();
         ViewModel.Settings.RestartPropertyChanged += OnRestartPropertyChanged;
     }
 
@@ -192,5 +196,22 @@ public partial class SystemToolsSettingsPage : SettingsPageBase
         ViewModel.SaveFeatureSettings();
         ViewModel.IsFeatureDrawerOpen = false;
         RequestRestart();
+    }
+
+
+    private void OnFloatingWindowConfigChanged(object? sender, RoutedEventArgs e)
+    {
+        ViewModel.RefreshFloatingTriggers();
+        IAppHost.GetService<FloatingWindowService>().UpdateWindowState();
+    }
+
+    private void OnMoveFloatingTriggerUpClick(object? sender, RoutedEventArgs e)
+    {
+        ViewModel.MoveSelectedFloatingTrigger(-1);
+    }
+
+    private void OnMoveFloatingTriggerDownClick(object? sender, RoutedEventArgs e)
+    {
+        ViewModel.MoveSelectedFloatingTrigger(1);
     }
 }
