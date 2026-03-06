@@ -49,6 +49,11 @@ public class FloatingWindowTrigger : TriggerBase<FloatingWindowTriggerConfig>
         return Settings.Icon;
     }
 
+    public string GetButtonName()
+    {
+        return Settings.ButtonName;
+    }
+
     private void EnsureButtonId()
     {
         if (string.IsNullOrWhiteSpace(Settings.ButtonId))
@@ -60,7 +65,8 @@ public class FloatingWindowTrigger : TriggerBase<FloatingWindowTriggerConfig>
     private void OnSettingsChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName == nameof(FloatingWindowTriggerConfig.Icon) ||
-            e.PropertyName == nameof(FloatingWindowTriggerConfig.ButtonId))
+            e.PropertyName == nameof(FloatingWindowTriggerConfig.ButtonId) ||
+            e.PropertyName == nameof(FloatingWindowTriggerConfig.ButtonName))
         {
             _floatingWindowService.RegisterTrigger(this);
         }

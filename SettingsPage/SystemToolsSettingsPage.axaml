@@ -269,6 +269,7 @@
                                     <DataTemplate>
                                         <StackPanel Orientation="Horizontal" Spacing="8">
                                             <TextBlock Text="{Binding Icon}" Width="70"/>
+                                            <TextBlock Text="{Binding ButtonName}" Width="90" TextTrimming="CharacterEllipsis"/>
                                             <TextBlock Text="{Binding ButtonId}" TextTrimming="CharacterEllipsis"/>
                                         </StackPanel>
                                     </DataTemplate>

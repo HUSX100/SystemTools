@@ -42,6 +42,7 @@ public partial class FloatingTriggerItem : ObservableObject
 {
     [ObservableProperty] private string _buttonId = string.Empty;
     [ObservableProperty] private string _icon = string.Empty;
+    [ObservableProperty] private string _buttonName = string.Empty;
 }
 
 public partial class SystemToolsSettingsViewModel : ObservableObject
@@ -217,7 +218,8 @@ public partial class SystemToolsSettingsViewModel : ObservableObject
             FloatingTriggers.Add(new FloatingTriggerItem
             {
                 ButtonId = entry.ButtonId,
-                Icon = entry.Icon
+                Icon = entry.Icon,
+                ButtonName = entry.Name
             });
         }
 
