@@ -34,3 +34,5 @@ SetWindowPos
 EnumWindows
 GetClassName
 GetWindowText
+DEV_BROADCAST_DEVICEINTERFACE_W
+DEV_BROADCAST_HDR
