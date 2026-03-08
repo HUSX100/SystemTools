@@ -11,6 +11,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading.Tasks;
+using Avalonia.Controls.Primitives;
 using SystemTools.Triggers;
 
 namespace SystemTools.Settings;
@@ -158,12 +159,12 @@ public class FloatingWindowTriggerSettings : TriggerSettingsControlBase<Floating
             Width = 34,
             Height = 34,
             Margin = new Thickness(1),
-            ToolTip = token,
+            //ToolTip = token,
             Padding = new Thickness(0),
             Content = new FluentIcon
             {
                 Glyph = ToGlyph(token),
-                FontSize = 18,
+                FontSize = 21,
                 HorizontalAlignment = HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Center
             }
