@@ -1,14 +1,12 @@
 using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Controls.Templates;
 using Avalonia.Layout;
 using Avalonia.Media;
 using ClassIsland.Core.Abstractions.Controls;
 using ClassIsland.Core.Controls;
+using FluentAvalonia.UI.Controls;
 using System;
-using System.Collections.Generic;
-using System.Collections.ObjectModel;
-using System.Linq;
+using System.Threading.Tasks;
 using SystemTools.Triggers;
 
 namespace SystemTools.Settings;
@@ -17,12 +15,21 @@ public class FloatingWindowTriggerSettings : TriggerSettingsControlBase<Floating
 {
     private const int IconCodeStart = 0xE000;
     private const int IconCodeEnd = 0xF4D3;
-    private const int IconsPerRow = 10;
 
     private readonly TextBox _iconTextBox;
     private readonly TextBox _nameTextBox;
-    private readonly ObservableCollection<IconRow> _iconRows = new();
-    private Window? _iconPickerWindow;
+
+    private readonly WrapPanel _iconWrapPanel = new()
+    {
+        Orientation = Orientation.Horizontal,
+        ItemWidth = 36,
+        ItemHeight = 36,
+        HorizontalAlignment = HorizontalAlignment.Stretch,
+        VerticalAlignment = VerticalAlignment.Top
+    };
+
+    private bool _iconsLoaded;
+    private ContentDialog? _iconPickerDialog;
 
     public FloatingWindowTriggerSettings()
     {
@@ -49,7 +56,7 @@ public class FloatingWindowTriggerSettings : TriggerSettingsControlBase<Floating
             Content = "选择图标",
             VerticalAlignment = VerticalAlignment.Center
         };
-        pickIconButton.Click += (_, _) => OpenIconPickerWindow();
+        pickIconButton.Click += async (_, _) => await OpenIconPickerDialogAsync();
         Grid.SetColumn(pickIconButton, 1);
         iconRow.Children.Add(pickIconButton);
         panel.Children.Add(iconRow);
@@ -74,163 +81,75 @@ public class FloatingWindowTriggerSettings : TriggerSettingsControlBase<Floating
         Content = panel;
     }
 
-    private Control BuildIconPickerContent()
+    private async Task OpenIconPickerDialogAsync()
     {
-        var title = new TextBlock
+        var topLevel = TopLevel.GetTopLevel(this);
+        if (topLevel == null)
         {
-            Text = "选择悬浮窗图标",
-            FontSize = 14,
-            FontWeight = FontWeight.SemiBold,
-            VerticalAlignment = VerticalAlignment.Center
-        };
+            return;
+        }
 
-        var closeButton = new Button
+        if (!_iconsLoaded)
         {
-            Content = "关闭",
-            HorizontalAlignment = HorizontalAlignment.Right
-        };
-        closeButton.Click += (_, _) => _iconPickerWindow?.Close();
+            LoadIcons();
+            _iconsLoaded = true;
+        }
 
-        var header = new Grid
+        _iconPickerDialog = new ContentDialog
         {
-            ColumnDefinitions = new ColumnDefinitions("*,Auto"),
-            Margin = new Thickness(0, 0, 0, 8)
-        };
-        header.Children.Add(title);
-        Grid.SetColumn(closeButton, 1);
-        header.Children.Add(closeButton);
-
-        var listBox = new ListBox
-        {
-            ItemsSource = _iconRows,
-            HorizontalAlignment = HorizontalAlignment.Stretch,
-            VerticalAlignment = VerticalAlignment.Stretch
-        };
-
-        listBox.ItemsPanel = new FuncTemplate<Panel>(() => new VirtualizingStackPanel());
-        listBox.ItemTemplate = new FuncDataTemplate<IconRow?>((row, _) => BuildRowPanel(row));
-
-        return new StackPanel
-        {
-            Children =
+            Title = "选择悬浮窗图标",
+            PrimaryButtonText = "关闭",
+            DefaultButton = ContentDialogButton.Primary,
+            Content = new Border
             {
-                header,
-                new Border
+                Padding = new Thickness(8),
+                Child = new ScrollViewer
                 {
-                    BorderBrush = new SolidColorBrush(Color.Parse("#22000000")),
-                    BorderThickness = new Thickness(1),
-                    CornerRadius = new CornerRadius(6),
-                    Padding = new Thickness(8),
-                    Child = listBox
+                    Height = 520,
+                    VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                    HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+                    Content = _iconWrapPanel
                 }
             }
         };
+
+        await _iconPickerDialog.ShowAsync(topLevel);
+        _iconPickerDialog = null;
     }
 
-    private Control BuildRowPanel(IconRow? row)
+    private void LoadIcons()
     {
-        var wrapPanel = new WrapPanel
+        for (var code = IconCodeStart; code <= IconCodeEnd; code++)
         {
-            Orientation = Orientation.Horizontal,
-            ItemWidth = 36,
-            ItemHeight = 36,
-            HorizontalAlignment = HorizontalAlignment.Stretch
-        };
-
-        if (row?.Icons == null || row.Icons.Count == 0)
-        {
-            return wrapPanel;
-        }
-
-        foreach (var icon in row.Icons)
-        {
-            if (icon == null || string.IsNullOrWhiteSpace(icon.Token) || string.IsNullOrEmpty(icon.Glyph))
-            {
-                continue;
-            }
+            var token = $"/u{code:X4}";
+            var glyph = char.ConvertFromUtf32(code);
 
             var iconButton = new Button
             {
                 Width = 34,
                 Height = 34,
                 Margin = new Thickness(1),
-                ToolTip = icon.Token,
+                ToolTip = token,
                 Padding = new Thickness(0),
                 Content = new FluentIcon
                 {
-                    Glyph = icon.Glyph,
+                    Glyph = glyph,
                     FontSize = 16,
                     HorizontalAlignment = HorizontalAlignment.Center,
                     VerticalAlignment = VerticalAlignment.Center
                 }
             };
 
-            iconButton.Click += (_, _) => SelectIcon(icon.Token);
-            wrapPanel.Children.Add(iconButton);
+            iconButton.Click += (_, _) => SelectIcon(token);
+            _iconWrapPanel.Children.Add(iconButton);
         }
-
-        return wrapPanel;
-    }
-
-    private void OpenIconPickerWindow()
-    {
-        if (_iconRows.Count == 0)
-        {
-            LoadIconRows();
-        }
-
-        if (_iconPickerWindow?.IsVisible == true)
-        {
-            _iconPickerWindow.Activate();
-            return;
-        }
-
-        _iconPickerWindow = new Window
-        {
-            Width = 480,
-            Height = 620,
-            MinWidth = 420,
-            MinHeight = 500,
-            ShowInTaskbar = false,
-            Title = "选择悬浮窗图标",
-            Content = new Border
-            {
-                Padding = new Thickness(10),
-                Child = BuildIconPickerContent()
-            }
-        };
-
-        _iconPickerWindow.Closed += (_, _) => _iconPickerWindow = null;
-
-        if (TopLevel.GetTopLevel(this) is Window owner)
-        {
-            _iconPickerWindow.WindowStartupLocation = WindowStartupLocation.CenterOwner;
-            _iconPickerWindow.Show(owner);
-            return;
-        }
-
-        _iconPickerWindow.Show();
     }
 
     private void SelectIcon(string token)
     {
         Settings.Icon = token;
         _iconTextBox.Text = token;
-        _iconPickerWindow?.Close();
-    }
-
-    private void LoadIconRows()
-    {
-        var allIcons = new List<IconItem>(IconCodeEnd - IconCodeStart + 1);
-        for (var code = IconCodeStart; code <= IconCodeEnd; code++)
-        {
-            allIcons.Add(new IconItem($"/u{code:X4}", char.ConvertFromUtf32(code)));
-        }
-
-        foreach (var chunk in allIcons.Chunk(IconsPerRow))
-        {
-            _iconRows.Add(new IconRow(chunk.ToList()));
-        }
+        _iconPickerDialog?.Hide();
     }
 
     protected override void OnInitialized()
@@ -239,8 +158,4 @@ public class FloatingWindowTriggerSettings : TriggerSettingsControlBase<Floating
         _iconTextBox.Text = Settings.Icon;
         _nameTextBox.Text = Settings.ButtonName;
     }
-
-    private sealed record IconItem(string Token, string Glyph);
-
-    private sealed record IconRow(IReadOnlyList<IconItem> Icons);
 }
