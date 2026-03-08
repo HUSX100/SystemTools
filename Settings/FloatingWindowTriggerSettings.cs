@@ -8,6 +8,8 @@ using ClassIsland.Core.Controls;
 using FluentAvalonia.UI.Controls;
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.Linq;
 using System.Threading.Tasks;
 using SystemTools.Triggers;
 
@@ -83,48 +85,65 @@ public class FloatingWindowTriggerSettings : TriggerSettingsControlBase<Floating
         }
 
         EnsureIconsLoaded();
+        var rows = BuildVirtualizedRows(460);
 
         _iconPickerDialog = new ContentDialog
         {
             Title = "选择悬浮窗图标",
             PrimaryButtonText = "关闭",
             DefaultButton = ContentDialogButton.Primary,
-            Content = BuildIconPickerContent()
+            Content = BuildIconPickerContent(rows)
         };
 
         await _iconPickerDialog.ShowAsync(topLevel);
         _iconPickerDialog = null;
     }
 
-    private Control BuildIconPickerContent()
+    private Control BuildIconPickerContent(ObservableCollection<IconRow> rows)
     {
-        var itemsControl = new ItemsControl
+        var listBox = new ListBox
         {
-            ItemsSource = _iconTokens
+            ItemsSource = rows,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            VerticalAlignment = VerticalAlignment.Stretch
         };
 
-        itemsControl.ItemsPanel = new FuncTemplate<Panel>(() => new WrapPanel
+        listBox.ItemsPanel = new FuncTemplate<Panel>(() => new VirtualizingStackPanel());
+        listBox.ItemTemplate = new FuncDataTemplate<IconRow?>((row, _) => BuildIconRow(row));
+
+        listBox.Height = 520;
+        listBox.VerticalScrollBarVisibility = ScrollBarVisibility.Auto;
+        listBox.HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled;
+
+        return new Border
+        {
+            Padding = new Thickness(8),
+            Child = listBox
+        };
+    }
+
+    private Control BuildIconRow(IconRow? row)
+    {
+        var panel = new WrapPanel
         {
             Orientation = Orientation.Horizontal,
             ItemWidth = 36,
             ItemHeight = 36,
             HorizontalAlignment = HorizontalAlignment.Stretch,
             VerticalAlignment = VerticalAlignment.Top
-        });
-
-        itemsControl.ItemTemplate = new FuncDataTemplate<string?>((token, _) => BuildIconButton(token));
-
-        return new Border
-        {
-            Padding = new Thickness(8),
-            Child = new ScrollViewer
-            {
-                Height = 520,
-                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-                HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
-                Content = itemsControl
-            }
         };
+
+        if (row?.Tokens == null || row.Tokens.Count == 0)
+        {
+            return panel;
+        }
+
+        foreach (var token in row.Tokens)
+        {
+            panel.Children.Add(BuildIconButton(token));
+        }
+
+        return panel;
     }
 
     private Control BuildIconButton(string? token)
@@ -152,6 +171,19 @@ public class FloatingWindowTriggerSettings : TriggerSettingsControlBase<Floating
 
         iconButton.Click += (_, _) => SelectIcon(token);
         return iconButton;
+    }
+
+    private ObservableCollection<IconRow> BuildVirtualizedRows(double dialogWidth)
+    {
+        var columns = Math.Max(6, (int)((dialogWidth - 32) / 38));
+        var rows = new ObservableCollection<IconRow>();
+
+        foreach (var chunk in _iconTokens.Chunk(columns))
+        {
+            rows.Add(new IconRow(chunk.ToList()));
+        }
+
+        return rows;
     }
 
     private static string ToGlyph(string token)
@@ -193,4 +225,6 @@ public class FloatingWindowTriggerSettings : TriggerSettingsControlBase<Floating
         _iconTextBox.Text = Settings.Icon;
         _nameTextBox.Text = Settings.ButtonName;
     }
+
+    private sealed record IconRow(IReadOnlyList<string> Tokens);
 }
