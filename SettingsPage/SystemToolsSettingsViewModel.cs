@@ -95,6 +95,7 @@ public partial class SystemToolsSettingsViewModel : ObservableObject
         {
             ("SystemTools.NetworkStatus", "网络延迟"),
             ("SystemTools.LyricsDisplay", "歌词显示"),
+            ("SystemTools.ClipboardContent", "显示剪切板内容"),
         };
         foreach (var (id, name) in components)
         {

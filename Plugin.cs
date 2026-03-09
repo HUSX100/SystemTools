@@ -255,6 +255,8 @@ public class Plugin : PluginBase
             "SystemTools.NetworkStatus");
         RegisterComponentIfEnabled<LyricsDisplayComponent, LyricsDisplaySettingsControl>(services, config,
             "SystemTools.LyricsDisplay");
+        RegisterComponentIfEnabled<ClipboardContentComponent, ClipboardContentSettingsControl>(services, config,
+            "SystemTools.ClipboardContent");
     }
 
     private void RegisterExperimentalFeatures(IServiceCollection services)
