@@ -201,36 +201,47 @@
                                             DragDrop.DragOver="OnFloatingTriggerRowDragOver"
                                             DragDrop.Drop="OnFloatingTriggerRowDrop">
                                         <StackPanel Spacing="6">
-                                            <TextBlock Text="按钮行" Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
-                                            <ItemsControl ItemsSource="{Binding Buttons}"
-                                                          DragDrop.AllowDrop="True"
-                                                          DragDrop.DragOver="OnFloatingTriggerRowDragOver"
-                                                          DragDrop.Drop="OnFloatingTriggerRowDrop">
-                                                <ItemsControl.ItemsPanel>
-                                                    <ItemsPanelTemplate>
-                                                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="6"/>
-                                                    </ItemsPanelTemplate>
-                                                </ItemsControl.ItemsPanel>
-                                                <ItemsControl.ItemTemplate>
-                                                    <DataTemplate>
-                                                        <Border Background="{DynamicResource SubtleFillColorSecondaryBrush}"
-                                                                CornerRadius="6"
-                                                                Padding="8,4"
-                                                                Tag="{Binding ButtonId}"
-                                                                DragDrop.AllowDrop="True"
-                                                                DragDrop.DragOver="OnFloatingTriggerItemDragOver"
-                                                                DragDrop.Drop="OnFloatingTriggerItemDrop"
-                                                                PointerPressed="OnFloatingTriggerItemPointerPressed"
-                                                                PointerMoved="OnFloatingTriggerItemPointerMoved"
-                                                                PointerReleased="OnFloatingTriggerItemPointerReleased">
-                                                            <StackPanel Orientation="Horizontal" Spacing="6">
-                                                                <TextBlock Text="{Binding Icon}"/>
-                                                                <TextBlock Text="{Binding ButtonName}"/>
-                                                            </StackPanel>
-                                                        </Border>
-                                                    </DataTemplate>
-                                                </ItemsControl.ItemTemplate>
-                                            </ItemsControl>
+                                            <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Center">
+                                                <TextBlock Text="按钮行" Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                                                <Button Grid.Column="1" Content="删除行" Click="OnRemoveFloatingTriggerRowClick" Theme="{StaticResource TransparentButton}"/>
+                                            </Grid>
+                                            <Border MinHeight="52"
+                                                    CornerRadius="6"
+                                                    Background="{DynamicResource SubtleFillColorTertiaryBrush}"
+                                                    Padding="6">
+                                                <ItemsControl ItemsSource="{Binding Buttons}"
+                                                              HorizontalAlignment="Stretch"
+                                                              VerticalAlignment="Center"
+                                                              DragDrop.AllowDrop="True"
+                                                              DragDrop.DragOver="OnFloatingTriggerRowDragOver"
+                                                              DragDrop.Drop="OnFloatingTriggerRowDrop">
+                                                    <ItemsControl.ItemsPanel>
+                                                        <ItemsPanelTemplate>
+                                                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="14"/>
+                                                        </ItemsPanelTemplate>
+                                                    </ItemsControl.ItemsPanel>
+                                                    <ItemsControl.ItemTemplate>
+                                                        <DataTemplate>
+                                                            <Border Background="{DynamicResource SubtleFillColorSecondaryBrush}"
+                                                                    CornerRadius="6"
+                                                                    Padding="8,4"
+                                                                    Margin="0,0,2,0"
+                                                                    Tag="{Binding ButtonId}"
+                                                                    DragDrop.AllowDrop="True"
+                                                                    DragDrop.DragOver="OnFloatingTriggerItemDragOver"
+                                                                    DragDrop.Drop="OnFloatingTriggerItemDrop"
+                                                                    PointerPressed="OnFloatingTriggerItemPointerPressed"
+                                                                    PointerMoved="OnFloatingTriggerItemPointerMoved"
+                                                                    PointerReleased="OnFloatingTriggerItemPointerReleased">
+                                                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                                                    <TextBlock Text="{Binding Icon}"/>
+                                                                    <TextBlock Text="{Binding ButtonName}"/>
+                                                                </StackPanel>
+                                                            </Border>
+                                                        </DataTemplate>
+                                                    </ItemsControl.ItemTemplate>
+                                                </ItemsControl>
+                                            </Border>
                                         </StackPanel>
                                     </Border>
                                 </DataTemplate>

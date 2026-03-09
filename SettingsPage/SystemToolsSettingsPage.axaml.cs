@@ -1,5 +1,6 @@
 ﻿using System;
 using System.IO;
+using System.Linq;
 using System.ComponentModel;
 using System.Threading.Tasks;
 using Avalonia;
@@ -230,6 +231,22 @@ public partial class SystemToolsSettingsPage : SettingsPageBase
         ViewModel.AddFloatingTriggerRow();
     }
 
+    private void OnRemoveFloatingTriggerRowClick(object? sender, RoutedEventArgs e)
+    {
+        if (sender is not Control { DataContext: FloatingTriggerRow row })
+        {
+            return;
+        }
+
+        if (ViewModel.FloatingTriggerRows.Count <= 1)
+        {
+            this.ShowWarningToast("至少需要保留 1 行。");
+            return;
+        }
+
+        _ = ViewModel.RemoveFloatingTriggerRow(row);
+    }
+
     private void OnFloatingTriggerItemPointerPressed(object? sender, PointerPressedEventArgs e)
     {
         if (sender is not Border border || !e.GetCurrentPoint(border).Properties.IsLeftButtonPressed)
@@ -305,6 +322,38 @@ public partial class SystemToolsSettingsPage : SettingsPageBase
         return -1;
     }
 
+    private int GetRowInsertIndex(Control sender, FloatingTriggerRow row, DragEventArgs e)
+    {
+        if (row.Buttons.Count == 0)
+        {
+            return 0;
+        }
+
+        var pointer = e.GetPosition(sender);
+        var itemBorders = sender.GetVisualDescendants()
+            .OfType<Border>()
+            .Where(x => x.DataContext is FloatingTriggerItem)
+            .OrderBy(x => x.TranslatePoint(new Point(0, 0), sender)?.X ?? double.MaxValue)
+            .ToList();
+
+        for (var i = 0; i < itemBorders.Count; i++)
+        {
+            var topLeft = itemBorders[i].TranslatePoint(new Point(0, 0), sender);
+            if (topLeft == null)
+            {
+                continue;
+            }
+
+            var center = topLeft.Value.X + itemBorders[i].Bounds.Width / 2;
+            if (pointer.X <= center)
+            {
+                return i;
+            }
+        }
+
+        return row.Buttons.Count;
+    }
+
     private void OnFloatingTriggerRowDragOver(object? sender, DragEventArgs e)
     {
         e.DragEffects = TryGetDragButtonId(e, out _) ? DragDropEffects.Move : DragDropEffects.None;
@@ -313,19 +362,20 @@ public partial class SystemToolsSettingsPage : SettingsPageBase
 
     private void OnFloatingTriggerRowDrop(object? sender, DragEventArgs e)
     {
-        if (!TryGetDragButtonId(e, out var buttonId))
+        if (!TryGetDragButtonId(e, out var buttonId) || sender is not Control senderControl)
         {
             return;
         }
 
-        var rowIndex = GetRowIndexFromControl(sender as Control);
+        var rowIndex = GetRowIndexFromControl(senderControl);
         if (rowIndex < 0)
         {
             return;
         }
 
         var row = ViewModel.FloatingTriggerRows[rowIndex];
-        ViewModel.MoveFloatingTrigger(buttonId, rowIndex, row.Buttons.Count);
+        var insertIndex = GetRowInsertIndex(senderControl, row, e);
+        ViewModel.MoveFloatingTrigger(buttonId, rowIndex, insertIndex);
     }
 
     private void OnFloatingTriggerItemDragOver(object? sender, DragEventArgs e)

@@ -273,6 +273,25 @@ public partial class SystemToolsSettingsViewModel : ObservableObject
         PersistFloatingTriggerRows();
     }
 
+    public bool RemoveFloatingTriggerRow(FloatingTriggerRow row)
+    {
+        var index = FloatingTriggerRows.IndexOf(row);
+        if (index < 0 || FloatingTriggerRows.Count <= 1)
+        {
+            return false;
+        }
+
+        var targetRow = index > 0 ? FloatingTriggerRows[index - 1] : FloatingTriggerRows[index + 1];
+        foreach (var item in row.Buttons)
+        {
+            targetRow.Buttons.Add(item);
+        }
+
+        FloatingTriggerRows.RemoveAt(index);
+        PersistFloatingTriggerRows();
+        return true;
+    }
+
     public bool MoveFloatingTrigger(string buttonId, int targetRowIndex, int targetIndex)
     {
         if (string.IsNullOrWhiteSpace(buttonId) || FloatingTriggerRows.Count == 0)
