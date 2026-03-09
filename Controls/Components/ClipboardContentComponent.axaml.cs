@@ -4,6 +4,7 @@ using ClassIsland.Core.Attributes;
 using System;
 using System.ComponentModel;
 using System.Linq;
+using Avalonia.Controls;
 using SystemTools.Models.ComponentSettings;
 using RoutedEventArgs = Avalonia.Interactivity.RoutedEventArgs;
 
@@ -12,13 +13,13 @@ namespace SystemTools.Controls.Components;
 [ComponentInfo(
     "E2A41B7D-9F36-4A08-8B8D-1BA29E570F62",
     "显示剪切板内容",
-    "\uE8C8",
+    "\uE48C",
     "剪切板内容更新时显示最新文本"
 )]
 public partial class ClipboardContentComponent : ComponentBase<ClipboardContentSettings>, INotifyPropertyChanged
 {
     private readonly DispatcherTimer _timer;
-    private string _clipboardContent = "（暂无剪切板文本内容）";
+    private string _clipboardContent = "（等待剪切板文本内容更新…）";
     private string? _lastClipboardText;
 
     public string ClipboardContent
