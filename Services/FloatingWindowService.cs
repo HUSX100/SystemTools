@@ -4,6 +4,7 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Styling;
 using Avalonia.Threading;
 using ClassIsland.Core.Controls;
 using System;
@@ -26,6 +27,7 @@ public class FloatingWindowService
     private bool _dragInitiated;
     private Point _pointerDownPoint;
     private PointerPressedEventArgs? _lastPressedArgs;
+    private bool _isThemeSubscribed;
 
     public event EventHandler? EntriesChanged;
 
@@ -41,6 +43,7 @@ public class FloatingWindowService
         Dispatcher.UIThread.Post(() =>
         {
             EnsureWindow();
+            SubscribeThemeChanged();
             ApplyVisibility();
             RefreshWindowButtons();
         });
@@ -55,6 +58,8 @@ public class FloatingWindowService
                 _window.Close();
                 _window = null;
             }
+
+            UnsubscribeThemeChanged();
         });
     }
 
@@ -94,6 +99,42 @@ public class FloatingWindowService
             ApplyVisibility();
             RefreshWindowButtons();
         });
+    }
+
+    private void SubscribeThemeChanged()
+    {
+        if (_isThemeSubscribed || Application.Current == null)
+        {
+            return;
+        }
+
+        Application.Current.PropertyChanged += OnApplicationPropertyChanged;
+        _isThemeSubscribed = true;
+    }
+
+    private void UnsubscribeThemeChanged()
+    {
+        if (!_isThemeSubscribed || Application.Current == null)
+        {
+            return;
+        }
+
+        Application.Current.PropertyChanged -= OnApplicationPropertyChanged;
+        _isThemeSubscribed = false;
+    }
+
+    private void OnApplicationPropertyChanged(object? sender, AvaloniaPropertyChangedEventArgs e)
+    {
+        if (e.Property == StyledElement.ActualThemeVariantProperty)
+        {
+            Dispatcher.UIThread.Post(RefreshWindowButtons);
+        }
+    }
+
+    private bool IsLightTheme()
+    {
+        var theme = _window?.ActualThemeVariant ?? Application.Current?.ActualThemeVariant;
+        return theme == ThemeVariant.Light;
     }
 
     private void EnsureWindow()
@@ -177,11 +218,16 @@ public class FloatingWindowService
         var iconSize = Math.Clamp(_configHandler.Data.FloatingWindowIconSize, 8, 30) * scale;
         var textSize = Math.Clamp(_configHandler.Data.FloatingWindowTextSize, 8, 30) * scale;
         var opacity = Math.Clamp(_configHandler.Data.FloatingWindowOpacity, 10, 100);
+        var alpha = (byte)Math.Round(255 * (opacity / 100.0));
+        var isLightTheme = IsLightTheme();
+        var windowBackground = isLightTheme
+            ? new SolidColorBrush(Color.FromArgb(alpha, 0xFF, 0xFF, 0xFF))
+            : new SolidColorBrush(Color.FromArgb(alpha, 0x1F, 0x1F, 0x1F));
+        var contentForeground = isLightTheme ? Brushes.Black : Brushes.White;
 
         if (_windowContainer != null)
         {
-            _windowContainer.Background = new SolidColorBrush(Color.FromArgb(
-                (byte)Math.Round(255 * (opacity / 100.0)), 0x1F, 0x1F, 0x1F));
+            _windowContainer.Background = windowBackground;
         }
 
         _stackPanel.Orientation = Orientation.Vertical;
@@ -207,7 +253,8 @@ public class FloatingWindowService
                     Glyph = ConvertIcon(entry.Icon),
                     FontSize = iconSize,
                     HorizontalAlignment = HorizontalAlignment.Center,
-                    VerticalAlignment = VerticalAlignment.Center
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Foreground = contentForeground
                 };
 
                 var nameBlock = new TextBlock
@@ -218,7 +265,8 @@ public class FloatingWindowService
                     TextAlignment = TextAlignment.Center,
                     TextWrapping = TextWrapping.Wrap,
                     MaxWidth = 100 * scale,
-                    Margin = new Thickness(0, 2 * scale, 0, 0)
+                    Margin = new Thickness(0, 2 * scale, 0, 0),
+                    Foreground = contentForeground
                 };
 
                 var contentPanel = new StackPanel
@@ -241,7 +289,7 @@ public class FloatingWindowService
                     MinHeight = 52 * scale,
                     Padding = new Thickness(6 * scale, 4 * scale),
                     Background = Brushes.Transparent,
-                    Foreground = Brushes.White,
+                    Foreground = contentForeground,
                     HorizontalContentAlignment = HorizontalAlignment.Center,
                     VerticalContentAlignment = VerticalAlignment.Center
                 };
