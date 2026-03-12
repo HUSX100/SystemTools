@@ -16,9 +16,9 @@
         <ScrollViewer>
             <StackPanel>
                 <controls:SettingsExpander
-                    Header="一言 txt 文件"
+                    Header="选择 txt 文件"
                     Description="每行一句，自动忽略空行"
-                    IconSource="{ci:FluentIconSource &#xE55D;}">
+                    IconSource="{ci:FluentIconSource &#xE6FD;}">
                     <controls:SettingsExpander.Footer>
                         <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
                             <TextBox Grid.Column="0"
@@ -34,7 +34,7 @@
                 <controls:SettingsExpander
                     Header="启用动画"
                     Description="切换句子时使用翻页动画"
-                    IconSource="{ci:FluentIconSource &#xE768;}">
+                    IconSource="{ci:FluentIconSource &#xF001;}">
                     <controls:SettingsExpander.Footer>
                         <ToggleSwitch IsChecked="{Binding Settings.EnableAnimation, Mode=TwoWay}" />
                     </controls:SettingsExpander.Footer>
@@ -43,7 +43,7 @@
                 <controls:SettingsExpander
                     Header="轮播间隔（秒）"
                     Description="每次切换到下一句的时间间隔"
-                    IconSource="{ci:FluentIconSource &#xE121;}">
+                    IconSource="{ci:FluentIconSource &#xEF75;}">
                     <controls:SettingsExpander.Footer>
                         <NumericUpDown Minimum="1"
                                        Maximum="600"

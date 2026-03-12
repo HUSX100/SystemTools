@@ -509,7 +509,7 @@ public class Plugin : PluginBase
         if (config.IsActionEnabled("SystemTools.Shutdown"))
             items.Add(new ActionMenuTreeItem("SystemTools.Shutdown", "计时关机", "\uE4C4"));
         if (config.IsActionEnabled("SystemTools.AdvancedShutdown"))
-            items.Add(new ActionMenuTreeItem("SystemTools.AdvancedShutdown", "高级计时关机", "\uE4C4"));
+            items.Add(new ActionMenuTreeItem("SystemTools.AdvancedShutdown", "高级计时关机", "\uE4D2"));
         if (config.IsActionEnabled("SystemTools.CancelShutdown"))
             items.Add(new ActionMenuTreeItem("SystemTools.CancelShutdown", "取消关机计划", "\uE4CC"));
         if (config.IsActionEnabled("SystemTools.LockScreen"))
@@ -588,7 +588,7 @@ public class Plugin : PluginBase
         var items = new List<ActionMenuTreeItem>();
 
         if (config.EnableFloatingWindowFeature && config.IsActionEnabled("SystemTools.ShowFloatingWindow"))
-            items.Add(new ActionMenuTreeItem("SystemTools.ShowFloatingWindow", "显示悬浮窗", "\uEDDB"));
+            items.Add(new ActionMenuTreeItem("SystemTools.ShowFloatingWindow", "显示悬浮窗", "\uEA37"));
 
         if (items.Count > 0)
         {
