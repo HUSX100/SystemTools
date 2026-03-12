@@ -1,4 +1,8 @@
 using Avalonia;
+using Avalonia.Animation;
+using Avalonia.Animation.Easings;
+using Avalonia.Controls;
+using Avalonia.Media;
 using Avalonia.Threading;
 using ClassIsland.Core.Abstractions.Controls;
 using ClassIsland.Core.Attributes;
@@ -21,24 +25,16 @@ namespace SystemTools.Controls.Components;
 )]
 public partial class LocalQuoteComponent : ComponentBase<LocalQuoteSettings>, INotifyPropertyChanged
 {
-    private static readonly Thickness StableMargin = new(0);
-    private static readonly Thickness EnterFromBottomMargin = new(0, 18, 0, -18);
-    private static readonly Thickness EnterHalfwayMargin = new(0, 6, 0, -6);
-    private static readonly Thickness SlightOvershootMargin = new(0, -2, 0, 2);
-    private static readonly Thickness ExitToTopMargin = new(0, -18, 0, 18);
+    private const double SwapMotionOffset = 20; // 对齐 ExtraIsland: 40 * 0.5
 
     private readonly DispatcherTimer _carouselTimer;
     private readonly List<string> _quotes = [];
+    private readonly Animation _swapOutAnimation;
+    private readonly Animation _swapInAnimation;
     private int _currentIndex = -1;
     private string _loadedPath = string.Empty;
     private bool _isAnimating;
-
     private string _currentQuote = "（请先在组件设置中选择 txt 文件）";
-    private string _nextQuote = string.Empty;
-    private double _currentTextOpacity = 1;
-    private double _nextTextOpacity;
-    private Thickness _currentTextMargin = StableMargin;
-    private Thickness _nextTextMargin = EnterFromBottomMargin;
 
     public string CurrentQuote
     {
@@ -47,56 +43,6 @@ public partial class LocalQuoteComponent : ComponentBase<LocalQuoteSettings>, IN
         {
             _currentQuote = value;
             OnPropertyChanged(nameof(CurrentQuote));
-        }
-    }
-
-    public string NextQuote
-    {
-        get => _nextQuote;
-        set
-        {
-            _nextQuote = value;
-            OnPropertyChanged(nameof(NextQuote));
-        }
-    }
-
-    public double CurrentTextOpacity
-    {
-        get => _currentTextOpacity;
-        set
-        {
-            _currentTextOpacity = value;
-            OnPropertyChanged(nameof(CurrentTextOpacity));
-        }
-    }
-
-    public double NextTextOpacity
-    {
-        get => _nextTextOpacity;
-        set
-        {
-            _nextTextOpacity = value;
-            OnPropertyChanged(nameof(NextTextOpacity));
-        }
-    }
-
-    public Thickness CurrentTextMargin
-    {
-        get => _currentTextMargin;
-        set
-        {
-            _currentTextMargin = value;
-            OnPropertyChanged(nameof(CurrentTextMargin));
-        }
-    }
-
-    public Thickness NextTextMargin
-    {
-        get => _nextTextMargin;
-        set
-        {
-            _nextTextMargin = value;
-            OnPropertyChanged(nameof(NextTextMargin));
         }
     }
 
@@ -110,8 +56,65 @@ public partial class LocalQuoteComponent : ComponentBase<LocalQuoteSettings>, IN
     public LocalQuoteComponent()
     {
         InitializeComponent();
+
         _carouselTimer = new DispatcherTimer();
         _carouselTimer.Tick += OnCarouselTicked;
+
+        _swapOutAnimation = new Animation
+        {
+            Duration = TimeSpan.FromMilliseconds(150),
+            FillMode = FillMode.Forward,
+            Easing = new QuadraticEaseIn(),
+            Children =
+            [
+                new KeyFrame
+                {
+                    Cue = new Cue(0),
+                    Setters =
+                    [
+                        new Setter(TranslateTransform.YProperty, 0d),
+                        new Setter(Visual.OpacityProperty, 1d)
+                    ]
+                },
+                new KeyFrame
+                {
+                    Cue = new Cue(1),
+                    Setters =
+                    [
+                        new Setter(TranslateTransform.YProperty, SwapMotionOffset),
+                        new Setter(Visual.OpacityProperty, 0d)
+                    ]
+                }
+            ]
+        };
+
+        _swapInAnimation = new Animation
+        {
+            Duration = TimeSpan.FromMilliseconds(150),
+            FillMode = FillMode.Forward,
+            Easing = new QuadraticEaseOut(),
+            Children =
+            [
+                new KeyFrame
+                {
+                    Cue = new Cue(0),
+                    Setters =
+                    [
+                        new Setter(TranslateTransform.YProperty, -SwapMotionOffset),
+                        new Setter(Visual.OpacityProperty, 0d)
+                    ]
+                },
+                new KeyFrame
+                {
+                    Cue = new Cue(1),
+                    Setters =
+                    [
+                        new Setter(TranslateTransform.YProperty, 0d),
+                        new Setter(Visual.OpacityProperty, 1d)
+                    ]
+                }
+            ]
+        };
     }
 
     private void LocalQuoteComponent_OnLoaded(object? sender, RoutedEventArgs e)
@@ -169,7 +172,7 @@ public partial class LocalQuoteComponent : ComponentBase<LocalQuoteSettings>, IN
         _quotes.Clear();
         _currentIndex = -1;
         _loadedPath = path;
-        ResetAnimationVisualState();
+        ResetVisualState();
 
         if (string.IsNullOrWhiteSpace(path))
         {
@@ -221,7 +224,7 @@ public partial class LocalQuoteComponent : ComponentBase<LocalQuoteSettings>, IN
 
         if (!Settings.EnableAnimation)
         {
-            ResetAnimationVisualState();
+            ResetVisualState();
             CurrentQuote = next;
             return;
         }
@@ -229,28 +232,14 @@ public partial class LocalQuoteComponent : ComponentBase<LocalQuoteSettings>, IN
         _isAnimating = true;
         try
         {
-            NextQuote = next;
-            NextTextOpacity = 0;
-            NextTextMargin = EnterFromBottomMargin;
-
-            await Task.Delay(20);
-
-            // 第一阶段：旧句上翻淡出，新句快速进入。
-            CurrentTextOpacity = 0;
-            CurrentTextMargin = ExitToTopMargin;
-            NextTextOpacity = 1;
-            NextTextMargin = EnterHalfwayMargin;
-
-            await Task.Delay(160);
-
-            // 第二阶段：新句轻微越位后回弹，模拟翻页落位。
-            NextTextMargin = SlightOvershootMargin;
-            await Task.Delay(80);
-            NextTextMargin = StableMargin;
-
-            await Task.Delay(80);
+            await _swapOutAnimation.RunAsync(QuoteTextBlock);
             CurrentQuote = next;
-            ResetAnimationVisualState();
+            await _swapInAnimation.RunAsync(QuoteTextBlock);
+        }
+        catch
+        {
+            CurrentQuote = next;
+            ResetVisualState();
         }
         finally
         {
@@ -258,12 +247,17 @@ public partial class LocalQuoteComponent : ComponentBase<LocalQuoteSettings>, IN
         }
     }
 
-    private void ResetAnimationVisualState()
+    private void ResetVisualState()
     {
-        CurrentTextOpacity = 1;
-        CurrentTextMargin = StableMargin;
-        NextTextOpacity = 0;
-        NextTextMargin = EnterFromBottomMargin;
-        NextQuote = string.Empty;
+        QuoteTextBlock.Opacity = 1;
+
+        if (QuoteTextBlock.RenderTransform is TranslateTransform transform)
+        {
+            transform.Y = 0;
+        }
+        else
+        {
+            QuoteTextBlock.RenderTransform = new TranslateTransform();
+        }
     }
 }

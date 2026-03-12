@@ -15,32 +15,14 @@
     mc:Ignorable="d">
     <Grid DataContext="{Binding RelativeSource={RelativeSource FindAncestor, AncestorType=local:LocalQuoteComponent}}"
           ClipToBounds="True">
-        <TextBlock Text="{Binding CurrentQuote}"
-                   Opacity="{Binding CurrentTextOpacity}"
-                   Margin="{Binding CurrentTextMargin}"
+        <TextBlock x:Name="QuoteTextBlock"
+                   Text="{Binding CurrentQuote}"
                    TextWrapping="NoWrap"
                    TextTrimming="CharacterEllipsis"
                    VerticalAlignment="Center">
-            <TextBlock.Transitions>
-                <Transitions>
-                    <DoubleTransition Property="Opacity" Duration="0:0:0.18" />
-                    <ThicknessTransition Property="Margin" Duration="0:0:0.18" />
-                </Transitions>
-            </TextBlock.Transitions>
-        </TextBlock>
-
-        <TextBlock Text="{Binding NextQuote}"
-                   Opacity="{Binding NextTextOpacity}"
-                   Margin="{Binding NextTextMargin}"
-                   TextWrapping="NoWrap"
-                   TextTrimming="CharacterEllipsis"
-                   VerticalAlignment="Center">
-            <TextBlock.Transitions>
-                <Transitions>
-                    <DoubleTransition Property="Opacity" Duration="0:0:0.18" />
-                    <ThicknessTransition Property="Margin" Duration="0:0:0.18" />
-                </Transitions>
-            </TextBlock.Transitions>
+            <TextBlock.RenderTransform>
+                <TranslateTransform Y="0" />
+            </TextBlock.RenderTransform>
         </TextBlock>
     </Grid>
 </ci:ComponentBase>
