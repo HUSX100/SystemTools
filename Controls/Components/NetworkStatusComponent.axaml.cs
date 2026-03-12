@@ -22,8 +22,16 @@ namespace SystemTools.Controls.Components;
 )]
 public partial class NetworkStatusComponent : ComponentBase<NetworkStatusSettings>, INotifyPropertyChanged
 {
+    private const int AutoModeIcmpRetryInterval = 60;
+
+    private readonly DispatcherTimer _timer;
+    private readonly HttpClient _httpClient;
+    private readonly SemaphoreSlim _checkSemaphore = new(1, 1);
+
     private string _statusText = "--";
     private IBrush _statusBrush = new SolidColorBrush(Colors.Gray);
+    private bool _autoModeUseHttp;
+    private int _httpDetectCountSinceIcmp;
 
     public string StatusText
     {
@@ -55,229 +63,114 @@ public partial class NetworkStatusComponent : ComponentBase<NetworkStatusSetting
     public NetworkStatusComponent()
     {
         InitializeComponent();
+
+        _timer = new DispatcherTimer
+        {
+            Interval = TimeSpan.FromSeconds(1)
+        };
+        _timer.Tick += OnTimerTicked;
+
+        _httpClient = new HttpClient
+        {
+            Timeout = TimeSpan.FromSeconds(5)
+        };
+        _httpClient.DefaultRequestHeaders.Add("User-Agent", "SystemTools/1.0");
     }
 
     private void NetworkStatusComponent_OnLoaded(object? sender, RoutedEventArgs e)
     {
-        NetworkStatusDetectionService.Subscribe(OnStatusUpdated);
-        NetworkStatusDetectionService.UpdateSettings(Settings.DetectMode, Settings.PingUrl);
         Settings.PropertyChanged += OnSettingsPropertyChanged;
+        _timer.Start();
+        _ = CheckNetworkStatusAsync();
     }
 
     private void NetworkStatusComponent_OnUnloaded(object? sender, RoutedEventArgs e)
     {
         Settings.PropertyChanged -= OnSettingsPropertyChanged;
-        NetworkStatusDetectionService.Unsubscribe(OnStatusUpdated);
+        _timer.Stop();
+        _httpClient.Dispose();
     }
 
     private void OnSettingsPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName == nameof(Settings.DetectMode))
         {
-            NetworkStatusDetectionService.UpdateSettings(Settings.DetectMode, Settings.PingUrl);
+            _autoModeUseHttp = false;
+            _httpDetectCountSinceIcmp = 0;
+            _ = CheckNetworkStatusAsync();
+            return;
         }
-        
+
         if (e.PropertyName == nameof(Settings.PingUrl))
-        {
-            NetworkStatusDetectionService.UpdateSettings(Settings.DetectMode, Settings.PingUrl);
-        }
-    }
-
-    private void OnStatusUpdated(NetworkStatusResult status)
-    {
-        StatusText = status.Text;
-        StatusBrush = status.Brush;
-    }
-}
-
-internal static class NetworkStatusDetectionService
-{
-    private static readonly object SyncLock = new();
-    private static readonly HttpClient HttpClient = new()
-    {
-        Timeout = TimeSpan.FromSeconds(5)
-    };
-    private static readonly DispatcherTimer Timer = new();
-    private static readonly SemaphoreSlim CheckSemaphore = new(1, 1);
-    private static event Action<NetworkStatusResult>? StatusChanged;
-
-    private static int _subscriberCount;
-    private static string _pingUrl = "https://www.baidu.com";
-    private static NetworkDetectMode _detectMode = NetworkDetectMode.Auto;
-    private static bool _autoModeUseHttp;
-    private static int _httpDetectCountSinceIcmp;
-    private const int AutoModeIcmpRetryInterval = 60;
-    private static NetworkStatusResult _latestResult = new("--", new SolidColorBrush(Colors.Gray));
-
-    static NetworkStatusDetectionService()
-    {
-        HttpClient.DefaultRequestHeaders.Add("User-Agent", "SystemTools/1.0");
-        Timer.Interval = TimeSpan.FromSeconds(1);
-        Timer.Tick += async (_, _) => await CheckNetworkStatusAsync();
-    }
-
-    public static void Subscribe(Action<NetworkStatusResult> callback)
-    {
-        lock (SyncLock)
-        {
-            StatusChanged += callback;
-            _subscriberCount++;
-            callback(_latestResult);
-
-            if (_subscriberCount == 1)
-            {
-                Timer.Start();
-                _ = CheckNetworkStatusAsync();
-            }
-        }
-    }
-
-    public static void Unsubscribe(Action<NetworkStatusResult> callback)
-    {
-        lock (SyncLock)
-        {
-            StatusChanged -= callback;
-            _subscriberCount = Math.Max(0, _subscriberCount - 1);
-
-            if (_subscriberCount == 0)
-            {
-                Timer.Stop();
-            }
-        }
-    }
-
-    public static void UpdateSettings(NetworkDetectMode detectMode, string pingUrl)
-    {
-        lock (SyncLock)
-        {
-            _detectMode = detectMode;
-            _pingUrl = string.IsNullOrWhiteSpace(pingUrl) ? "https://www.baidu.com" : pingUrl;
-
-            if (detectMode != NetworkDetectMode.Auto)
-            {
-                _autoModeUseHttp = false;
-                _httpDetectCountSinceIcmp = 0;
-            }
-            else if (!_autoModeUseHttp)
-            {
-                _httpDetectCountSinceIcmp = 0;
-            }
-        }
-
-        var shouldTriggerCheck = false;
-        lock (SyncLock)
-        {
-            shouldTriggerCheck = _subscriberCount > 0;
-        }
-
-        if (shouldTriggerCheck)
         {
             _ = CheckNetworkStatusAsync();
         }
     }
 
-    private static async Task CheckNetworkStatusAsync()
+    private void OnTimerTicked(object? sender, EventArgs e)
     {
-        var hasSubscribers = false;
-        lock (SyncLock)
-        {
-            hasSubscribers = _subscriberCount > 0;
-        }
+        _ = CheckNetworkStatusAsync();
+    }
 
-        if (!hasSubscribers)
-        {
-            return;
-        }
-
-        if (!await CheckSemaphore.WaitAsync(0))
+    private async Task CheckNetworkStatusAsync()
+    {
+        if (!await _checkSemaphore.WaitAsync(0))
         {
             return;
         }
 
         try
         {
+            var url = string.IsNullOrWhiteSpace(Settings.PingUrl)
+                ? "https://www.baidu.com"
+                : Settings.PingUrl;
+
             long delay;
-            string url;
-            NetworkDetectMode mode;
-            bool autoModeUseHttp;
-
-            lock (SyncLock)
-            {
-                if (_subscriberCount == 0)
-                {
-                    return;
-                }
-
-                url = _pingUrl;
-                mode = _detectMode;
-                autoModeUseHttp = _autoModeUseHttp;
-            }
-
-            NetworkStatusResult result;
-
-            switch (mode)
+            switch (Settings.DetectMode)
             {
                 case NetworkDetectMode.Icmp:
+                {
                     var icmpResult = await TryIcmpPingAsync(url);
                     if (!icmpResult.Success)
                     {
-                        PublishResult(new NetworkStatusResult(icmpResult.ErrorText, new SolidColorBrush(Colors.Red)));
+                        SetErrorStatus(icmpResult.ErrorText);
                         return;
                     }
+
                     delay = icmpResult.Delay;
                     break;
-
+                }
                 case NetworkDetectMode.Http:
                     delay = await TryHttpPingAsync(url);
                     break;
-
                 case NetworkDetectMode.Auto:
                 default:
-                    if (!autoModeUseHttp)
+                    if (!_autoModeUseHttp)
                     {
                         var autoIcmpResult = await TryIcmpPingAsync(url);
                         if (autoIcmpResult.Success)
                         {
+                            _httpDetectCountSinceIcmp = 0;
                             delay = autoIcmpResult.Delay;
-                            lock (SyncLock)
-                            {
-                                _autoModeUseHttp = false;
-                                _httpDetectCountSinceIcmp = 0;
-                            }
                         }
                         else
                         {
-                            lock (SyncLock)
-                            {
-                                _autoModeUseHttp = true;
-                                _httpDetectCountSinceIcmp = 0;
-                            }
+                            _autoModeUseHttp = true;
+                            _httpDetectCountSinceIcmp = 0;
                             delay = await TryHttpPingAsync(url);
                         }
                     }
                     else
                     {
-                        var shouldRetryIcmp = false;
-                        lock (SyncLock)
-                        {
-                            _httpDetectCountSinceIcmp++;
-                            if (_httpDetectCountSinceIcmp >= AutoModeIcmpRetryInterval)
-                            {
-                                _httpDetectCountSinceIcmp = 0;
-                                shouldRetryIcmp = true;
-                            }
-                        }
+                        _httpDetectCountSinceIcmp++;
 
-                        if (shouldRetryIcmp)
+                        if (_httpDetectCountSinceIcmp >= AutoModeIcmpRetryInterval)
                         {
+                            _httpDetectCountSinceIcmp = 0;
                             var retryIcmpResult = await TryIcmpPingAsync(url);
                             if (retryIcmpResult.Success)
                             {
-                                lock (SyncLock)
-                                {
-                                    _autoModeUseHttp = false;
-                                }
-
+                                _autoModeUseHttp = false;
                                 delay = retryIcmpResult.Delay;
                                 break;
                             }
@@ -285,31 +178,31 @@ internal static class NetworkStatusDetectionService
 
                         delay = await TryHttpPingAsync(url);
                     }
+
                     break;
             }
 
-            result = CreateDelayResult(delay);
-            PublishResult(result);
+            UpdateStatus(delay);
         }
         catch (TaskCanceledException)
         {
-            PublishResult(new NetworkStatusResult("超时", new SolidColorBrush(Colors.Red)));
+            SetErrorStatus("超时");
         }
         catch (HttpRequestException)
         {
-            PublishResult(new NetworkStatusResult("无网络", new SolidColorBrush(Colors.Red)));
+            SetErrorStatus("无网络");
         }
         catch
         {
-            PublishResult(new NetworkStatusResult("错误", new SolidColorBrush(Colors.Red)));
+            SetErrorStatus("错误");
         }
         finally
         {
-            CheckSemaphore.Release();
+            _checkSemaphore.Release();
         }
     }
 
-    private static async Task<IcmpProbeResult> TryIcmpPingAsync(string url)
+    private async Task<IcmpProbeResult> TryIcmpPingAsync(string url)
     {
         try
         {
@@ -317,11 +210,10 @@ internal static class NetworkStatusDetectionService
                 || url.StartsWith("https://", StringComparison.OrdinalIgnoreCase)
                 ? new Uri(url)
                 : new Uri($"https://{url}");
-            var host = uri.Host;
 
             using var ping = new Ping();
-            var reply = await ping.SendPingAsync(host, 2000);
-            
+            var reply = await ping.SendPingAsync(uri.Host, 2000);
+
             if (reply.Status == IPStatus.Success)
             {
                 if (reply.RoundtripTime <= 0)
@@ -344,55 +236,51 @@ internal static class NetworkStatusDetectionService
         {
             return IcmpProbeResult.Fail("错误");
         }
-        
     }
 
-    private static async Task<long> TryHttpPingAsync(string url)
+    private async Task<long> TryHttpPingAsync(string url)
     {
         var httpUrl = url;
-        if (!httpUrl.StartsWith("http://", StringComparison.OrdinalIgnoreCase) 
+        if (!httpUrl.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
             && !httpUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
         {
             httpUrl = "https://" + httpUrl;
         }
 
         var stopwatch = Stopwatch.StartNew();
-        
-        using var response = await HttpClient.SendAsync(
-            new HttpRequestMessage(HttpMethod.Head, httpUrl), 
+
+        using var response = await _httpClient.SendAsync(
+            new HttpRequestMessage(HttpMethod.Head, httpUrl),
             HttpCompletionOption.ResponseHeadersRead);
-        
+
         stopwatch.Stop();
-        
         response.EnsureSuccessStatusCode();
+
         return stopwatch.ElapsedMilliseconds;
     }
 
-    private static NetworkStatusResult CreateDelayResult(long delay)
+    private void UpdateStatus(long delay)
     {
-        var brush = delay switch
+        StatusText = $"{delay}ms";
+        StatusBrush = delay switch
         {
             < 50 => new SolidColorBrush(Colors.LimeGreen),
             < 100 => new SolidColorBrush(Colors.Green),
             < 300 => new SolidColorBrush(Colors.Orange),
             _ => new SolidColorBrush(Colors.Red)
         };
-
-        return new NetworkStatusResult($"{delay}ms", brush);
     }
 
-    private static void PublishResult(NetworkStatusResult result)
+    private void SetErrorStatus(string text)
     {
-        _latestResult = result;
-        Dispatcher.UIThread.Post(() => StatusChanged?.Invoke(result));
+        StatusText = text;
+        StatusBrush = new SolidColorBrush(Colors.Red);
     }
-}
 
-internal sealed record NetworkStatusResult(string Text, IBrush Brush);
+    private sealed record IcmpProbeResult(bool Success, long Delay, string ErrorText)
+    {
+        public static IcmpProbeResult Ok(long delay) => new(true, delay, string.Empty);
 
-internal sealed record IcmpProbeResult(bool Success, long Delay, string ErrorText)
-{
-    public static IcmpProbeResult Ok(long delay) => new(true, delay, string.Empty);
-
-    public static IcmpProbeResult Fail(string errorText) => new(false, -1, errorText);
+        public static IcmpProbeResult Fail(string errorText) => new(false, -1, errorText);
+    }
 }
