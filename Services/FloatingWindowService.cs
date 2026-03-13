@@ -633,7 +633,7 @@ public class FloatingWindowService
 
     private bool IsEventFromTouchDragHandle(object? source)
     {
-        if (_touchDragHandle == null || source is not IVisual visual)
+        if (_touchDragHandle == null || source is not Visual visual)
         {
             return false;
         }
