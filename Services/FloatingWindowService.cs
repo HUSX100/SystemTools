@@ -28,6 +28,12 @@ public class FloatingWindowService
     private const uint WinEventSkipOwnProcess = 2;
     private static readonly HWND HwndBottom = new(1);
     private static readonly HWND HwndTopmost = new(-1);
+    private const int WhMouseLl = 14;
+    private const int WmMouseMove = 0x0200;
+    private const int WmLButtonDown = 0x0201;
+    private const int WmRButtonDown = 0x0204;
+    private const ulong MiWpSignatureMask = 0xFFFFFF00UL;
+    private const ulong MiWpSignature = 0xFF515700UL;
 
     private readonly MainConfigHandler _configHandler;
     private readonly Dictionary<FloatingWindowTrigger, FloatingWindowEntry> _entries = new();
@@ -43,7 +49,7 @@ public class FloatingWindowService
     private readonly Dictionary<string, double> _buttonWidthCache = new();
     private bool _allowWindowClose;
     private bool _restoringFromMinimized;
-    private bool _isTouchInputMode;
+    private bool _isTouchDeviceDetected;
     private bool _touchDragAllowed;
     private PixelPoint _touchDragStartScreenPoint;
     private PixelPoint _touchDragStartWindowPosition;
@@ -51,11 +57,15 @@ public class FloatingWindowService
     private IntPtr _foregroundHook;
     private IntPtr _reorderHook;
     private WinEventProc? _winEventProc;
+    private IntPtr _mouseHook;
+    private LowLevelMouseProc? _lowLevelMouseProc;
     private DispatcherTimer LayerRecheck50MsTimer { get; } = new() { Interval = TimeSpan.FromMilliseconds(50) };
     private DispatcherTimer LayerRecheck1MsTimer { get; } = new() { Interval = TimeSpan.FromMilliseconds(1) };
 
     private delegate void WinEventProc(IntPtr hWinEventHook, uint @event, IntPtr hwnd, int idObject, int idChild, uint idEventThread,
         uint dwmsEventTime);
+
+    private delegate IntPtr LowLevelMouseProc(int nCode, IntPtr wParam, IntPtr lParam);
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern IntPtr SetWinEventHook(uint eventMin, uint eventMax, IntPtr hmodWinEventProc,
@@ -63,6 +73,15 @@ public class FloatingWindowService
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool UnhookWinEvent(IntPtr hWinEventHook);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern IntPtr SetWindowsHookEx(int idHook, LowLevelMouseProc lpfn, IntPtr hMod, uint dwThreadId);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool UnhookWindowsHookEx(IntPtr hhk);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr CallNextHookEx(IntPtr hhk, int nCode, IntPtr wParam, IntPtr lParam);
 
     public event EventHandler? EntriesChanged;
 
@@ -79,6 +98,7 @@ public class FloatingWindowService
         {
             EnsureWindow();
             EnsureLayerRecheckHooks();
+            EnsureGlobalInputHooks();
             SubscribeThemeChanged();
             ApplyVisibility();
             RefreshLayerRecheckMode();
@@ -101,6 +121,7 @@ public class FloatingWindowService
             LayerRecheck50MsTimer.Stop();
             LayerRecheck1MsTimer.Stop();
             RemoveLayerRecheckHooks();
+            RemoveGlobalInputHooks();
             UnsubscribeThemeChanged();
         });
     }
@@ -176,16 +197,26 @@ public class FloatingWindowService
 
     private void OnApplicationPropertyChanged(object? sender, AvaloniaPropertyChangedEventArgs e)
     {
-        if (string.Equals(e.Property?.Name, "ActualThemeVariant", StringComparison.Ordinal))
+        if (string.Equals(e.Property?.Name, "ActualThemeVariant", StringComparison.Ordinal)
+            && _configHandler.Data.FloatingWindowTheme == 0)
         {
             Dispatcher.UIThread.Post(RefreshWindowButtons);
         }
     }
 
+    private ThemeVariant ResolveWindowThemeVariant()
+    {
+        return _configHandler.Data.FloatingWindowTheme switch
+        {
+            1 => ThemeVariant.Light,
+            2 => ThemeVariant.Dark,
+            _ => _window?.ActualThemeVariant ?? Application.Current?.ActualThemeVariant ?? ThemeVariant.Dark
+        };
+    }
+
     private bool IsLightTheme()
     {
-        var theme = _window?.ActualThemeVariant ?? Application.Current?.ActualThemeVariant;
-        return theme == ThemeVariant.Light;
+        return ResolveWindowThemeVariant() == ThemeVariant.Light;
     }
 
     private void EnsureWindow()
@@ -330,6 +361,16 @@ public class FloatingWindowService
         if (_windowContainer != null)
         {
             _windowContainer.Background = windowBackground;
+            _windowContainer.BoxShadow = _configHandler.Data.FloatingWindowShadowEnabled
+                ? new BoxShadows(new BoxShadow
+                {
+                    OffsetX = 0,
+                    OffsetY = 6 * scale,
+                    Blur = 18 * scale,
+                    Spread = 0,
+                    Color = isLightTheme ? Color.Parse("#28000000") : Color.Parse("#60000000")
+                })
+                : default;
         }
 
         _stackPanel.Orientation = Orientation.Vertical;
@@ -339,7 +380,7 @@ public class FloatingWindowService
 
         _stackPanel.Children.Clear();
 
-        if (_isTouchInputMode)
+        if (_isTouchDeviceDetected)
         {
             _touchDragHandle = CreateTouchDragHandle(scale, contentForeground);
             _stackPanel.Children.Add(_touchDragHandle);
@@ -536,9 +577,9 @@ public class FloatingWindowService
 
         UpdateInputMode(e.Pointer.Type);
 
-        if (_isTouchInputMode)
+        if (_isTouchDeviceDetected)
         {
-            if (!IsEventFromTouchDragHandle(e.Source))
+            if (e.Pointer.Type != PointerType.Touch || !IsEventFromTouchDragHandle(e.Source))
             {
                 _touchDragAllowed = false;
                 return;
@@ -571,9 +612,9 @@ public class FloatingWindowService
 
         UpdateInputMode(e.Pointer.Type);
 
-        if (_isTouchInputMode)
+        if (_isTouchDeviceDetected)
         {
-            if (!_touchDragAllowed)
+            if (e.Pointer.Type != PointerType.Touch || !_touchDragAllowed)
             {
                 return;
             }
@@ -618,8 +659,13 @@ public class FloatingWindowService
 
         UpdateInputMode(e.Pointer.Type);
 
-        if (_isTouchInputMode)
+        if (_isTouchDeviceDetected)
         {
+            if (e.Pointer.Type != PointerType.Touch)
+            {
+                return;
+            }
+
             var wasTouchDragging = _touchDragAllowed;
             _touchDragAllowed = false;
             if (!wasTouchDragging)
@@ -684,18 +730,91 @@ public class FloatingWindowService
 
     private void UpdateInputMode(PointerType pointerType)
     {
-        var isTouchMode = pointerType == PointerType.Touch;
-        if (isTouchMode == _isTouchInputMode)
+        if (pointerType == PointerType.Touch)
+        {
+            SetTouchInputMode(true);
+            return;
+        }
+
+        if (pointerType == PointerType.Mouse || pointerType == PointerType.Pen)
+        {
+            SetTouchInputMode(false);
+        }
+    }
+
+    private void SetTouchInputMode(bool isTouch)
+    {
+        if (_isTouchDeviceDetected == isTouch)
         {
             return;
         }
 
-        _isTouchInputMode = isTouchMode;
+        _isTouchDeviceDetected = isTouch;
         _pointerPressed = false;
         _dragInitiated = false;
         _lastPressedArgs = null;
         _touchDragAllowed = false;
         Dispatcher.UIThread.Post(RefreshWindowButtons);
+    }
+
+    private void EnsureGlobalInputHooks()
+    {
+        if (_mouseHook != IntPtr.Zero)
+        {
+            return;
+        }
+
+        _lowLevelMouseProc ??= OnLowLevelMouse;
+        _mouseHook = SetWindowsHookEx(WhMouseLl, _lowLevelMouseProc, IntPtr.Zero, 0);
+    }
+
+    private void RemoveGlobalInputHooks()
+    {
+        if (_mouseHook == IntPtr.Zero)
+        {
+            return;
+        }
+
+        UnhookWindowsHookEx(_mouseHook);
+        _mouseHook = IntPtr.Zero;
+    }
+
+    private IntPtr OnLowLevelMouse(int nCode, IntPtr wParam, IntPtr lParam)
+    {
+        if (nCode < 0 || lParam == IntPtr.Zero)
+        {
+            return CallNextHookEx(_mouseHook, nCode, wParam, lParam);
+        }
+
+        var message = unchecked((uint)wParam.ToInt64());
+        if (message != WmMouseMove && message != WmLButtonDown && message != WmRButtonDown)
+        {
+            return CallNextHookEx(_mouseHook, nCode, wParam, lParam);
+        }
+
+        var info = Marshal.PtrToStructure<MSLLHOOKSTRUCT>(lParam);
+        var extra = unchecked((ulong)info.dwExtraInfo.ToInt64());
+        var isTouchGenerated = (extra & MiWpSignatureMask) == MiWpSignature;
+
+        SetTouchInputMode(isTouchGenerated);
+        return CallNextHookEx(_mouseHook, nCode, wParam, lParam);
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct POINT
+    {
+        public int X;
+        public int Y;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MSLLHOOKSTRUCT
+    {
+        public POINT pt;
+        public uint mouseData;
+        public uint flags;
+        public uint time;
+        public IntPtr dwExtraInfo;
     }
 
     private PixelRect GetWindowRect(PixelPoint position)
