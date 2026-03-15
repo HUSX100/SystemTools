@@ -192,6 +192,7 @@ public partial class SystemToolsSettingsViewModel : ObservableObject, IDisposabl
             ("SystemTools.KillProcess", "退出进程", "实用工具"),
             ("SystemTools.ScreenShot", "屏幕截图", "实用工具"),
             ("SystemTools.SetVolume", "设置系统音量", "实用工具"),
+            ("SystemTools.SetVolumeAndHold", "调整系统音量并保持", "实用工具"),
             ("SystemTools.ShowToast", "拉起自定义Windows通知", "实用工具"),
             ("SystemTools.DisableDevice", "禁用硬件设备", "实用工具"),
             ("SystemTools.EnableDevice", "启用硬件设备", "实用工具"),
