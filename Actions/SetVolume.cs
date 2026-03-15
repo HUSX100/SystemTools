@@ -199,4 +199,11 @@ internal static class MMDeviceExtensions
         var volume = device.GetAudioEndpointVolume();
         volume.SetMute(mute, eventContext);
     }
+
+    public static float GetMasterVolumeLevelScalar(this IMMDevice device)
+    {
+        var volume = device.GetAudioEndpointVolume();
+        volume.GetMasterVolumeLevelScalar(out var level);
+        return level;
+    }
 }

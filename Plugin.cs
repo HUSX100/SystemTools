@@ -216,6 +216,8 @@ public class Plugin : PluginBase
         RegisterActionIfEnabled<ScreenShotAction, ScreenShotSettingsControl>(services, config,
             "SystemTools.ScreenShot");
         RegisterActionIfEnabled<SetVolumeAction, SetVolumeSettingsControl>(services, config, "SystemTools.SetVolume");
+        RegisterActionIfEnabled<SetVolumeAndHoldAction, SetVolumeAndHoldSettingsControl>(services, config,
+            "SystemTools.SetVolumeAndHold");
         RegisterActionIfEnabled<KillProcessAction, KillProcessSettingsControl>(services, config,
             "SystemTools.KillProcess");
         RegisterActionIfEnabled<EnableDeviceAction, EnableDeviceSettingsControl>(services, config,
@@ -380,7 +382,8 @@ public class Plugin : PluginBase
         }
 
         // 实用工具
-        if (HasAnyActionEnabled(config, "SystemTools.ScreenShot", "SystemTools.SetVolume", "SystemTools.KillProcess",
+        if (HasAnyActionEnabled(config, "SystemTools.ScreenShot", "SystemTools.SetVolume",
+                "SystemTools.SetVolumeAndHold", "SystemTools.KillProcess",
                 "SystemTools.EnableDevice", "SystemTools.DisableDevice", "SystemTools.ShowToast"))
         {
             IActionService.ActionMenuTree["SystemTools 行动"].Add(new ActionMenuTreeGroup("实用工具…", "\uE352"));
@@ -532,6 +535,8 @@ public class Plugin : PluginBase
             items.Add(new ActionMenuTreeItem("SystemTools.ScreenShot", "屏幕截图", "\uEEE7"));
         if (config.IsActionEnabled("SystemTools.SetVolume"))
             items.Add(new ActionMenuTreeItem("SystemTools.SetVolume", "设置系统音量", "\uF013"));
+        if (config.IsActionEnabled("SystemTools.SetVolumeAndHold"))
+            items.Add(new ActionMenuTreeItem("SystemTools.SetVolumeAndHold", "调整系统音量并保持", "\uF013"));
         if (config.IsActionEnabled("SystemTools.ShowToast"))
             items.Add(new ActionMenuTreeItem("SystemTools.ShowToast", "拉起自定义Windows通知", "\uE3E4"));
         if (config.IsActionEnabled("SystemTools.DisableDevice"))
